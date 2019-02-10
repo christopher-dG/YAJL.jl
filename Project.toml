@@ -1,0 +1,7 @@
+name = "YAJL"
+uuid = "fa0ea86e-2ce1-11e9-1f2b-b18eea1c4f5f"
+authors = ["Chris de Graaf <chrisadegraaf@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+Libdl = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
