@@ -106,7 +106,7 @@ macro yajl(ex)
     push!(ex.args[2].args, :(return true))
 
     # First function argument: Context subtype.
-    T = ex.args[1].args[1].args[2].args[2]
+    T = last(ex.args[1].args[1].args[2].args)
 
     # Name of the cb_* function.
     cb = Expr(:., :YAJL, QuoteNode(Symbol(:cb_, ex.args[1].args[1].args[1])))
