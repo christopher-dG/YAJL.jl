@@ -109,7 +109,7 @@ macro yajl(ex)
     T = ex.args[1].args[1].args[2].args[2]
 
     # Name of the cb_* function.
-    cb = Expr(:(.), :YAJL, QuoteNode(Symbol(:cb_, ex.args[1].args[1].args[1])))
+    cb = Expr(:., :YAJL, QuoteNode(Symbol(:cb_, ex.args[1].args[1].args[1])))
 
     # Rename the function to on_* to avoid any Base conflicts.
     f = ex.args[1].args[1].args[1] = Symbol(:on_, ex.args[1].args[1].args[1])
@@ -188,9 +188,13 @@ end
 # Container for function pointers.
 const yajl = Dict{Symbol, Ptr{Cvoid}}()
 
+const depsfile = joinpath(dirname(@__DIR__), "deps", "deps.jl")
+isfile(depsfile) ? include(depsfile) : error("""Run Pkg.build("YAJL")""")
+
 # Load functions at runtime.
 function __init__()
-    lib = Libdl.dlopen(:libyajl)
+    check_deps()
+    lib = Libdl.dlopen(libyajl)
     for f in [:alloc, :complete_parse, :config, :free, :free_error, :get_error, :parse]
         yajl[f] = Libdl.dlsym(lib, Symbol(:yajl_, f))
     end
