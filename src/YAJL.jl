@@ -102,14 +102,14 @@ macro callback(ex)
     T = ex.args[1].args[1].args[2].args[2]
 
     # Name of the cb_* function.
-    cb = Symbol(:cb_, ex.args[1].args[1].args[1])
+    cb = Expr(:(.), :YAJL, QuoteNode(Symbol(:cb_, ex.args[1].args[1].args[1])))
 
     # Rename the function to on_* to avoid any Base conflicts.
     f = ex.args[1].args[1].args[1] = Symbol(:on_, ex.args[1].args[1].args[1])
 
     # Argument types for @cfunction.
     Ts = map(ex -> esc(ex.args[2]), ex.args[1].args[1].args[2:end])
-    Ts[1] = :(Ref($T))
+    Ts[1] = :(Ref($(esc(T))))
 
     quote
         $(esc(ex))
