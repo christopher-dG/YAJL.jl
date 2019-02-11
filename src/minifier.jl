@@ -23,7 +23,7 @@ Removes all unecessary whitespace from JSON.
 
 # Example
 ```jldoctest
-julia> String(take!(YAJL.run(YAJL.Minifier(IOBuffer()), IOBuffer("{    }"))))
+julia> String(take!(YAJL.run(IOBuffer("{    }"), YAJL.Minifier(IOBuffer()))))
 "{}"
 ```
 """
