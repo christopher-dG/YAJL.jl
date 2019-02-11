@@ -21,8 +21,8 @@ const CLOSE_BRACKET = UInt8(']')
 
 Removes all unecessary whitespace from JSON.
 
-# Example
-```jldoctest
+## Example
+```julia-repl
 julia> String(take!(YAJL.run(IOBuffer("{    }"), YAJL.Minifier(IOBuffer()))))
 "{}"
 ```
@@ -42,7 +42,7 @@ writeval(ctx::Minifier, v::UInt8, ::Int=-1) = write(ctx.io, v)
 
 # Yuck.
 function addval(ctx::Minifier, v, len::Int=-1; string::Bool=false)
-    state = last(ctx.state)
+    state = ctx.state[end]
     if state === MINIFY_INIT
         string && writeval(ctx, QUOTE)
         writeval(ctx, v, len)
@@ -51,17 +51,17 @@ function addval(ctx::Minifier, v, len::Int=-1; string::Bool=false)
         writeval(ctx, [COMMA, QUOTE])
         writeval(ctx, v, len)
         writeval(ctx, [QUOTE, COLON])
-        ctx.state[lastindex(ctx.state)] = MINIFY_MAP_VAL
+        ctx.state[end] = MINIFY_MAP_VAL
     elseif state === MINIFY_MAP_KEY_FIRST
         writeval(ctx, QUOTE)
         writeval(ctx, v, len)
         writeval(ctx, [QUOTE, COLON])
-        ctx.state[lastindex(ctx.state)] = MINIFY_MAP_VAL
+        ctx.state[end] = MINIFY_MAP_VAL
     elseif state === MINIFY_MAP_VAL
         string && writeval(ctx, QUOTE)
         writeval(ctx, v, len)
         string && writeval(ctx, QUOTE)
-        ctx.state[lastindex(ctx.state)] = MINIFY_MAP_KEY
+        ctx.state[end] = MINIFY_MAP_KEY
     elseif state === MINIFY_ARRAY
         writeval(ctx, COMMA)
         string && writeval(ctx, QUOTE)
@@ -71,7 +71,7 @@ function addval(ctx::Minifier, v, len::Int=-1; string::Bool=false)
         string && writeval(ctx, QUOTE)
         writeval(ctx, v, len)
         string && writeval(ctx, QUOTE)
-        ctx.state[lastindex(ctx.state)] = MINIFY_ARRAY
+        ctx.state[end] = MINIFY_ARRAY
     end
     return 1
 end
@@ -81,7 +81,7 @@ end
 @yajl number(ctx::Minifier, v::Ptr{UInt8}, len::Int) = addval(ctx, v, len)
 @yajl string(ctx::Minifier, v::Ptr{UInt8}, len::Int) = addval(ctx, v, len; string=true)
 @yajl function map_start(ctx::Minifier)
-    last(ctx.state) in (MINIFY_ARRAY, MINIFY_MAP_KEY) && writeval(ctx, COMMA)
+    ctx.state[end] in (MINIFY_ARRAY, MINIFY_MAP_KEY) && writeval(ctx, COMMA)
     writeval(ctx, OPEN_BRACE)
     push!(ctx.state, MINIFY_MAP_KEY_FIRST)
     return 1
@@ -91,17 +91,17 @@ end
     writeval(ctx, CLOSE_BRACE)
     pop!(ctx.state)
 
-    state = last(ctx.state)
+    state = ctx.state[end]
     if state === MINIFY_MAP_KEY_FIRST
-        ctx.state[lastindex(ctx.state)] = MINIFY_MAP_KEY
+        ctx.state[end] = MINIFY_MAP_KEY
     elseif state === MINIFY_ARRAY_FIRST
-        ctx.state[lastindex(ctx.state)] = MINIFY_ARRAY
+        ctx.state[end] = MINIFY_ARRAY
     end
 
     return 1
 end
 @yajl function array_start(ctx::Minifier)
-    last(ctx.state) in (MINIFY_ARRAY, MINIFY_MAP_KEY) && writeval(ctx, COMMA)
+    ctx.state[end] in (MINIFY_ARRAY, MINIFY_MAP_KEY) && writeval(ctx, COMMA)
     writeval(ctx, OPEN_BRACKET)
     push!(ctx.state, MINIFY_ARRAY_FIRST)
     return 1
@@ -110,11 +110,11 @@ end
     writeval(ctx, CLOSE_BRACKET)
     pop!(ctx.state)
 
-    state = last(ctx.state)
+    state = ctx.state[end]
     if state === MINIFY_MAP_KEY_FIRST
-        ctx.state[lastindex(ctx.state)] = MINIFY_MAP_KEY
+        ctx.state[end] = MINIFY_MAP_KEY
     elseif state === MINIFY_ARRAY_FIRST
-        ctx.state[lastindex(ctx.state)] = MINIFY_ARRAY
+        ctx.state[end] = MINIFY_ARRAY
     end
 
     return 1

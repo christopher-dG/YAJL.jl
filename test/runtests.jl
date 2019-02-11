@@ -12,6 +12,25 @@ YAJL.complete(ctx::Count) = ctx.n
 @testset "YAJL.jl" begin
     @testset "Basics" begin
         io = IOBuffer("[" * repeat("0,", 1000000) * "0]")
-        @test YAJL.run(io, Count()) == 1000001
+        expected = 1000001
+        @test YAJL.run(io, Count()) == expected
+    end
+
+    @testset "Minifier" begin
+        io = IOBuffer("""
+        [
+          {
+            "foo": null,
+            "bar": 0,
+            "baz": 1.2,
+            "qux": "qux"
+          },
+          1,
+          2,
+          3
+        ]
+        """)
+        expected = """[{"foo":null,"bar":0,"baz":1.2,"qux":"qux"},1,2,3]"""
+        @test String(take!(YAJL.run(io, YAJL.Minifier(IOBuffer())))) == expected
     end
 end

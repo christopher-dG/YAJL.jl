@@ -106,7 +106,7 @@ macro yajl(ex)
     push!(ex.args[2].args, :(return true))
 
     # First function argument: Context subtype.
-    T = last(ex.args[1].args[1].args[2].args)
+    T = ex.args[1].args[1].args[2].args[end]
 
     # Name of the cb_* function.
     cb = Expr(:., :YAJL, QuoteNode(Symbol(:cb_, ex.args[1].args[1].args[1])))
@@ -115,7 +115,7 @@ macro yajl(ex)
     f = ex.args[1].args[1].args[1] = Symbol(:on_, ex.args[1].args[1].args[1])
 
     # Argument types for @cfunction.
-    Ts = map(ex -> esc(last(ex.args)), ex.args[1].args[1].args[2:end])
+    Ts = map(ex -> esc(ex.args[end]), ex.args[1].args[1].args[2:end])
     Ts[1] = :(Ref($(esc(T))))
 
     quote
@@ -155,7 +155,7 @@ end
 Parse the JSON data from `io` and process it with `ctx`'s callbacks.
 The return value is determined by the implementation of [`complete`](@ref) for `ctx`.
 
-# Keywords
+## Keywords
 - `chunk::Integer=2^16`: Number of bytes to read from `io` at a time.
 - `options::Integer=0x0`: YAJL parser options, ORed together.
 """
