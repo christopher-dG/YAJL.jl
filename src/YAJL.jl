@@ -1,10 +1,12 @@
 module YAJL
 
+export @yajl
+
 using Libdl
 
 """
 Base type for YAJL contexts.
-To implement a custom `Context`'s behaviour, see [`@callback`](@ref) and [`complete`](@ref).
+To implement a custom `Context`'s behaviour, see [`@yajl`](@ref) and [`complete`](@ref).
 For a full example, see `minifier.jl`.
 """
 abstract type Context end
@@ -20,6 +22,7 @@ end
     complete(ctx::Context)
 
 Override this function for your custom [`Context`](@ref) to specify what is returned from [`run`](@ref).
+By default, `ctx` itself is returned.
 """
 complete(ctx::Context) = ctx
 
@@ -65,6 +68,7 @@ const OPTIONS = [
 """
 Register a callback for a specific data type.
 Callback functions must return `true` or a non-zero integer, otherwise a parsing error is thrown.
+A `return true` is inserted automatically at the end of the function, but your own explicit returns override this.
 
 The callbacks to be overridden are as follows:
 
@@ -81,7 +85,7 @@ The callbacks to be overridden are as follows:
 - `array_end(ctx::T)`: Called when an array ends (`]`).
 
 For string arguments which appear as `Ptr{UInt8}`, `Cstring` can also be used.
-However, `Ptr{UInt8}` is usually better if you want to use `unsafe_string`.
+However, `Ptr{UInt8}` is usually better if you want to use `unsafe_string(v, len)`.
 
 !!! note
     To handle numbers, implement either `number` or both `integer` and `double`.
@@ -90,13 +94,16 @@ However, `Ptr{UInt8}` is usually better if you want to use `unsafe_string`.
 
 For a full example, see `minifier.jl`.
 """
-macro callback(ex)
+macro yajl(ex)
     # Ensure that the function returns a Cint.
     if ex.args[1].args[1] isa Symbol
         ex.args[1] = Expr(:(::), ex.args[1], :Cint)
     else
         ex.args[1].args[2] = :Cint
     end
+
+    # By default, always return success.
+    push!(ex.args[2].args, :(return true))
 
     # First function argument: Context subtype.
     T = ex.args[1].args[1].args[2].args[2]
@@ -108,7 +115,7 @@ macro callback(ex)
     f = ex.args[1].args[1].args[1] = Symbol(:on_, ex.args[1].args[1].args[1])
 
     # Argument types for @cfunction.
-    Ts = map(ex -> esc(ex.args[2]), ex.args[1].args[1].args[2:end])
+    Ts = map(ex -> esc(last(ex.args)), ex.args[1].args[1].args[2:end])
     Ts[1] = :(Ref($(esc(T))))
 
     quote
@@ -126,14 +133,14 @@ struct ParseError <: Exception
 end
 
 # Check the parser status and throw an exception if there's an error.
-function checkstatus(handle::Ptr{Cvoid}, status::Cint, text::Vector{UInt8})
+function checkstatus(handle::Ptr{Cvoid}, status::Cint, text::Vector{UInt8}, len::Int)
     if status == Cint(OK)
         return
     elseif status == Cint(CLIENT_CANCELLED)
         throw(ParseError(CLIENT_CANCELLED, ""))
     elseif status == Cint(ERROR)
         err = ccall(yajl[:get_error], Cstring, (Ptr{Cvoid}, Cint, Ptr{Cuchar}, Csize_t),
-                    handle, 1, text, length(text))
+                    handle, 1, text, len)
         reason = unsafe_string(err)
         ccall(yajl[:free_error], Cvoid, (Ptr{Cvoid}, Cstring), handle, err)
         throw(ParseError(ERROR, reason))
@@ -143,17 +150,16 @@ function checkstatus(handle::Ptr{Cvoid}, status::Cint, text::Vector{UInt8})
 end
 
 """
-    run(ctx::Context, io::IO; chunk::Integer=2^16, options::Integer=0x0)
+    run(io::IO, ctx::Context; chunk::Integer=2^16, options::Integer=0x0)
 
 Parse the JSON data from `io` and process it with `ctx`'s callbacks.
 The return value is determined by the implementation of [`complete`](@ref) for `ctx`.
-By default, `ctx` itself is returned.
 
 # Keywords
 - `chunk::Integer=2^16`: Number of bytes to read from `io` at a time.
 - `options::Integer=0x0`: YAJL parser options, ORed together.
 """
-function run(ctx::T, io::IO; chunk::Integer=2^16, options::Integer=0x0) where T <: Context
+function run(io::IO, ctx::T; chunk::Integer=2^16, options::Integer=0x0) where T <: Context
     handle = ccall(yajl[:alloc], Ptr{Cvoid}, (Ptr{Callbacks}, Ptr{Cvoid}, Ptr{T}),
                    Ref(Callbacks(ctx)), C_NULL, Ref(ctx))
 
@@ -163,15 +169,16 @@ function run(ctx::T, io::IO; chunk::Integer=2^16, options::Integer=0x0) where T 
         end
     end
 
-    while bytesavailable(io) > 0
-        text = read(io, chunk)
+    text = Vector{UInt8}(undef, chunk)
+    while !eof(io)
+        n = readbytes!(io, text)
         status = ccall(yajl[:parse], Cint, (Ptr{Cvoid}, Ptr{Cuchar}, Csize_t),
-                       handle, text, length(text))
-        checkstatus(handle, status, text)
+                       handle, text, n)
+        checkstatus(handle, status, text, n)
     end
 
     status = ccall(yajl[:complete_parse], Cint, (Ptr{Cvoid},), handle)
-    checkstatus(handle, status, UInt8[])
+    checkstatus(handle, status, UInt8[], 0)
 
     ccall(yajl[:free], Cvoid, (Ptr{Cvoid},), handle)
 
