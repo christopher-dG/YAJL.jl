@@ -73,7 +73,6 @@ function addval(ctx::Minifier, v, len::Int=-1; string::Bool=false)
         string && writeval(ctx, QUOTE)
         ctx.state[end] = MINIFY_ARRAY
     end
-    return 1
 end
 
 @yajl null(ctx::Minifier) = addval(ctx, NULL)
@@ -84,38 +83,30 @@ end
     ctx.state[end] in (MINIFY_ARRAY, MINIFY_MAP_KEY) && writeval(ctx, COMMA)
     writeval(ctx, OPEN_BRACE)
     push!(ctx.state, MINIFY_MAP_KEY_FIRST)
-    return 1
 end
 @yajl map_key(ctx::Minifier, v::Ptr{UInt8}, len::Int) = addval(ctx, v, len)
 @yajl function map_end(ctx::Minifier)
     writeval(ctx, CLOSE_BRACE)
     pop!(ctx.state)
-
     state = ctx.state[end]
     if state === MINIFY_MAP_KEY_FIRST
         ctx.state[end] = MINIFY_MAP_KEY
     elseif state === MINIFY_ARRAY_FIRST
         ctx.state[end] = MINIFY_ARRAY
     end
-
-    return 1
 end
 @yajl function array_start(ctx::Minifier)
     ctx.state[end] in (MINIFY_ARRAY, MINIFY_MAP_KEY) && writeval(ctx, COMMA)
     writeval(ctx, OPEN_BRACKET)
     push!(ctx.state, MINIFY_ARRAY_FIRST)
-    return 1
 end
 @yajl function array_end(ctx::Minifier)
     writeval(ctx, CLOSE_BRACKET)
     pop!(ctx.state)
-
     state = ctx.state[end]
     if state === MINIFY_MAP_KEY_FIRST
         ctx.state[end] = MINIFY_MAP_KEY
     elseif state === MINIFY_ARRAY_FIRST
         ctx.state[end] = MINIFY_ARRAY
     end
-
-    return 1
 end
