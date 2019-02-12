@@ -67,8 +67,9 @@ const OPTIONS = [
 
 """
 Register a callback for a specific data type.
-Callback functions must return `true` or a non-zero integer, otherwise a parsing error is thrown.
+Callback functions should return `true` or a non-zero integer upon success, otherwise parsing stops (although sometimes this is desired).
 A `return true` is inserted automatically at the end of the function, but your own explicit returns override this.
+Note that the `return` keyword **must** be used in this case.
 
 The callbacks to be overridden are as follows:
 
@@ -124,28 +125,30 @@ macro yajl(ex)
     end
 end
 
-@enum Status OK CLIENT_CANCELLED ERROR UNKNOWN
+const ST_OK = Cint(0)
+const ST_CLIENT_CANCELLED = Cint(1)
+const ST_ERROR = Cint(2)
 
 # A YAJL parser error.
 struct ParseError <: Exception
-    status::Status
     reason::String
 end
 
 # Check the parser status and throw an exception if there's an error.
 function checkstatus(handle::Ptr{Cvoid}, status::Cint, text::Vector{UInt8}, len::Int)
-    if status == Cint(OK)
-        return
-    elseif status == Cint(CLIENT_CANCELLED)
-        throw(ParseError(CLIENT_CANCELLED, ""))
-    elseif status == Cint(ERROR)
+    return if status == ST_OK
+        true
+    elseif status == ST_CLIENT_CANCELLED
+        false
+    elseif status == ST_ERROR
         err = ccall(yajl[:get_error], Cstring, (Ptr{Cvoid}, Cint, Ptr{Cuchar}, Csize_t),
                     handle, 1, text, len)
         reason = unsafe_string(err)
         ccall(yajl[:free_error], Cvoid, (Ptr{Cvoid}, Cstring), handle, err)
-        throw(ParseError(ERROR, reason))
-    elseif status == Cint(UNKNOWN)
-        throw(ParseError(status, ""))
+        throw(ParseError(reason))
+    else
+        @warn "yajl_parse returned unknown status: $status"
+        true
     end
 end
 
@@ -169,16 +172,22 @@ function run(io::IO, ctx::T; chunk::Integer=2^16, options::Integer=0x0) where T 
         end
     end
 
+    cancelled = false
     text = Vector{UInt8}(undef, chunk)
     while !eof(io)
         n = readbytes!(io, text)
         status = ccall(yajl[:parse], Cint, (Ptr{Cvoid}, Ptr{Cuchar}, Csize_t),
                        handle, text, n)
-        checkstatus(handle, status, text, n)
+        if !checkstatus(handle, status, text, n)
+            cancelled = true
+            break
+        end
     end
 
-    status = ccall(yajl[:complete_parse], Cint, (Ptr{Cvoid},), handle)
-    checkstatus(handle, status, UInt8[], 0)
+    if !cancelled
+        status = ccall(yajl[:complete_parse], Cint, (Ptr{Cvoid},), handle)
+        checkstatus(handle, status, UInt8[], 0)
+    end
 
     ccall(yajl[:free], Cvoid, (Ptr{Cvoid},), handle)
 
