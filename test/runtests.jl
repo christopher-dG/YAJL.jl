@@ -19,6 +19,19 @@ function test_throws(T::Type{<:Exception}, ex::Expr)
     end
 end
 
+macro test_nothrows(ex)
+    quote
+        try
+            $(esc(ex))
+            @test true
+        catch e
+            e isa LoadError && (e = e.error)
+            @error "Test failed: expected no throw, $(typeof(e)) thrown instead" ex=$(QuoteNode(ex))
+            @test false
+        end
+    end
+end
+
 mutable struct Counter <: YAJL.Context
     n::Int
     Counter() = new(0)
@@ -56,6 +69,26 @@ struct DoNothing3 <: YAJL.Context end
         io = IOBuffer("[" * repeat("0,", 10) * "1,1,1,1,1]")
         expected = zeros(Int, 10)
         @test YAJL.run(io, UntilN(1)) == expected
+    end
+
+    @testset "Parse options" begin
+        ctx = DoNothing()
+        io = IOBuffer("// foo\n{}")
+        @test_nothrows YAJL.run(io, ctx; options=YAJL.ALLOW_COMMENTS)
+        io = IOBuffer([0x22, 0xff, 0x22])
+        @test_nothrows YAJL.run(io, ctx; options=YAJL.DONT_VALIDATE_STRINGS)
+        io = IOBuffer("{}.")
+        @test_nothrows YAJL.run(io, ctx; options=YAJL.ALLOW_TRAILING_GARBAGE)
+        io = IOBuffer("{}{}")
+        @test_nothrows YAJL.run(io, ctx; options=YAJL.ALLOW_MULTIPLE_VALUES)
+        io = IOBuffer("[")
+        @test_nothrows YAJL.run(io, ctx; options=YAJL.ALLOW_PARTIAL_VALUES)
+        io = IOBuffer("// foo\n[{}")
+        @test_nothrows YAJL.run(io, ctx; options=YAJL.ALLOW_COMMENTS | YAJL.ALLOW_PARTIAL_VALUES)
+    end
+
+    @testset "Parse errors" begin
+        test_throws(YAJL.ParseError, :(YAJL.run(IOBuffer("."), DoNothing())))
     end
 
     @testset "@yajl errors + warnings" begin
