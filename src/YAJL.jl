@@ -11,6 +11,10 @@ For a full example, see `minifier.jl`.
 """
 abstract type Context end
 
+# YAJL callback types.
+const CALLBACKS = (:null, :boolean, :integer, :double, :number, :string, :map_start,
+                   :map_key, :map_end, :array_start, :array_end)
+
 # Default callbacks.
 for s in [:null, :boolean, :integer, :double, :number, :string, :map_start, :map_key,
           :map_end, :array_start, :array_end]
@@ -33,11 +37,11 @@ struct Callbacks
     double::Ptr{Cvoid}
     number::Ptr{Cvoid}
     string::Ptr{Cvoid}
-    start_map::Ptr{Cvoid}
+    map_start::Ptr{Cvoid}
     map_key::Ptr{Cvoid}
-    end_map::Ptr{Cvoid}
-    start_array::Ptr{Cvoid}
-    end_array::Ptr{Cvoid}
+    map_end::Ptr{Cvoid}
+    array_start::Ptr{Cvoid}
+    array_end::Ptr{Cvoid}
 
     Callbacks(ctx::Context) = new(
         cb_null(ctx),
@@ -64,6 +68,10 @@ const OPTIONS = [
     ALLOW_COMMENTS, DONT_VALIDATE_STRINGS, ALLOW_TRAILING_GARBAGE, ALLOW_MULTIPLE_VALUES,
     ALLOW_PARTIAL_VALUES,
 ]
+
+# Check if a context type has defined a function.
+hasmethod(T::Type{<:Context}, fs::Function...) =
+    any(f -> any(m -> m.sig.types[2] === T, methods(f)), fs)
 
 """
 Register a callback for a specific data type.
@@ -109,17 +117,31 @@ macro yajl(ex)
     # First function argument: Context subtype.
     T = ex.args[1].args[1].args[2].args[end]
 
+    # Unmodified function name.
+    f = ex.args[1].args[1].args[1]
+
+    # Ensure that it's a valid callback name.
+    f in CALLBACKS || throw(ArgumentError("Invalid callback name: $f"))
+
     # Name of the cb_* function.
-    cb = Expr(:., :YAJL, QuoteNode(Symbol(:cb_, ex.args[1].args[1].args[1])))
+    cb = Expr(:., :YAJL, QuoteNode(Symbol(:cb_, f)))
 
     # Rename the function to on_* to avoid any Base conflicts.
-    f = ex.args[1].args[1].args[1] = Symbol(:on_, ex.args[1].args[1].args[1])
+    f = ex.args[1].args[1].args[1] = Symbol(:on_, f)
 
     # Argument types for @cfunction.
     Ts = map(ex -> esc(ex.args[end]), ex.args[1].args[1].args[2:end])
     Ts[1] = :(Ref($(esc(T))))
 
     quote
+        # Warn if a useless or destructive callback is being added.
+        $(QuoteNode(f)) === :on_number &&
+            YAJL.hasmethod($(esc(T)), cb_integer, cb_double) &&
+            @warn "Implementing number callback for $($(esc(T))) disables both integer and double callbacks"
+        $(QuoteNode(f)) in (:on_integer, :on_double) &&
+            YAJL.hasmethod($(esc(T)), cb_number) &&
+            @warn "Implementing integer or double callback for $($(esc(T))) has no effect because number callback is already implemented"
+
         $(esc(ex))
         $(esc(cb))(::$(esc(T))) = @cfunction($f, Cint, ($(Ts...),))
     end
