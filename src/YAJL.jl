@@ -73,6 +73,24 @@ const OPTIONS = [
 hasmethod(T::Type{<:Context}, fs::Function...) =
     any(f -> any(m -> m.sig.types[2] === T, methods(f)), fs)
 
+# Check that a callback's type signature is valid.
+function checktypes(f::Symbol, C::Base.RefValue, Ts::Type...)
+    # Drop the leading on_.
+    f = Symbol(string(f)[4:end])
+    err = ArgumentError("Invalid callback type signature")
+
+    C.x <: Context || throw(err)
+    if f in (:boolean, :integer)
+        length(Ts) == 1 && Ts[1] <: Integer || throw(err)
+    elseif f === :double
+        length(Ts) == 1 && Ts[1] <: AbstractFloat || throw(err)
+    elseif f in (:number, :string, :map_key)
+        length(Ts) == 2 && Ts[1] in (Ptr{UInt8}, Cstring) && Ts[2] <: Integer || throw(err)
+    else
+        isempty(Ts) || throw(err)
+    end
+end
+
 """
 Register a callback for a specific data type.
 Callback functions should return `true` or a non-zero integer upon success, otherwise parsing stops (although sometimes this is desired).
@@ -114,14 +132,11 @@ macro yajl(ex)
     # By default, always return success.
     push!(ex.args[2].args, :(return true))
 
-    # First function argument: Context subtype.
-    T = ex.args[1].args[1].args[2].args[end]
-
     # Unmodified function name.
     f = ex.args[1].args[1].args[1]
 
     # Ensure that it's a valid callback name.
-    f in CALLBACKS || throw(ArgumentError("Invalid callback name: $f"))
+    f in CALLBACKS || throw(ArgumentError("Invalid callback name"))
 
     # Name of the cb_* function.
     cb = Expr(:., :YAJL, QuoteNode(Symbol(:cb_, f)))
@@ -130,20 +145,28 @@ macro yajl(ex)
     f = ex.args[1].args[1].args[1] = Symbol(:on_, f)
 
     # Argument types for @cfunction.
-    Ts = map(ex -> esc(ex.args[end]), ex.args[1].args[1].args[2:end])
-    Ts[1] = :(Ref($(esc(T))))
+    Ts = map(ex.args[1].args[1].args[2:end]) do ex
+        ex isa Symbol && throw(ArgumentError("Callback arguments must be typed"))
+        esc(ex.args[end])
+    end
+    isempty(Ts) && throw(ArgumentError("Invalid callback type signature"))
+    T = Ts[1]
+    Ts[1] = :(Ref($T))
 
     quote
+        # Validate the argument types.
+        checktypes($(QuoteNode(f)), ($(Ts...),)...)
+
         # Warn if a useless or destructive callback is being added.
         $(QuoteNode(f)) === :on_number &&
-            YAJL.hasmethod($(esc(T)), cb_integer, cb_double) &&
-            @warn "Implementing number callback for $($(esc(T))) disables both integer and double callbacks"
+            YAJL.hasmethod($T, cb_integer, cb_double) &&
+            @warn "Implementing number callback for $($T) disables both integer and double callbacks"
         $(QuoteNode(f)) in (:on_integer, :on_double) &&
-            YAJL.hasmethod($(esc(T)), cb_number) &&
-            @warn "Implementing integer or double callback for $($(esc(T))) has no effect because number callback is already implemented"
+            YAJL.hasmethod($T, cb_number) &&
+            @warn "Implementing integer or double callback for $($T) has no effect because number callback is already implemented"
 
         $(esc(ex))
-        $(esc(cb))(::$(esc(T))) = @cfunction($f, Cint, ($(Ts...),))
+        $(esc(cb))(::$T) = @cfunction($f, Cint, ($(Ts...),))
     end
 end
 
