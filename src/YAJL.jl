@@ -119,6 +119,10 @@ However, `Ptr{UInt8}` is usually better if you want to use `unsafe_string(v, len
     Usually, `number` is a better choice because `integer` and `double have limited precision.
     See [here](https://lloyd.github.io/yajl/yajl-2.1.0/structyajl__callbacks.html) for more details.
 
+!!! warning
+    If your [`Context`](@ref) is a parametric type, it must appear non-parameterized in the function definition.
+    This means that your callback functions cannot dispatch on the context's type parameter.
+
 For a full example, see `minifier.jl`.
 """
 macro yajl(ex)
@@ -166,13 +170,13 @@ macro yajl(ex)
             @warn "Implementing integer or double callback for $($T) has no effect because number callback is already implemented"
 
         $(esc(ex))
-        $(esc(cb))(::$T) = @cfunction($f, Cint, ($(Ts...),))
+        $(esc(cb))(::$T) = @cfunction $f Cint ($(Ts...),)
     end
 end
 
-const ST_OK = Cint(0)
-const ST_CLIENT_CANCELLED = Cint(1)
-const ST_ERROR = Cint(2)
+const ST_OK = 0
+const ST_CLIENT_CANCELLED = 1
+const ST_ERROR = 2
 
 # A YAJL parser error.
 struct ParseError <: Exception
