@@ -1,5 +1,5 @@
 name = "YAJL"
-uuid = "fa0ea86e-2ce1-11e9-1f2b-b18eea1c4f5f"
+uuid = "bda616b3-ac6d-5293-8ee1-22b41414598d"
 authors = ["Chris de Graaf <chrisadegraaf@gmail.com>"]
 version = "0.1.0"
 
