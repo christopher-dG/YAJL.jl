@@ -23,7 +23,7 @@ mutable struct Counter <: YAJL.Context
     n::Int
     Counter() = new(0)
 end
-YAJL.complete(ctx::Counter) = ctx.n
+YAJL.collect(ctx::Counter) = ctx.n
 @yajl integer(ctx::Counter, ::Int) = ctx.n += 1
 
 struct UntilN <: YAJL.Context
@@ -31,7 +31,7 @@ struct UntilN <: YAJL.Context
     xs::Vector{Int}
     UntilN(n::Int) = new(n, [])
 end
-YAJL.complete(ctx::UntilN) = ctx.xs
+YAJL.collect(ctx::UntilN) = ctx.xs
 @yajl function integer(ctx::UntilN, n::Int)
     return if n == ctx.n
         false

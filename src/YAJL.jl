@@ -6,7 +6,7 @@ using Libdl
 
 """
 Base type for YAJL contexts.
-To implement a custom `Context`'s behaviour, see [`@yajl`](@ref) and [`complete`](@ref).
+To implement a custom `Context`'s behaviour, see [`@yajl`](@ref) and [`collect`](@ref).
 For a full example, see `minifier.jl`.
 """
 abstract type Context end
@@ -23,12 +23,12 @@ for s in [:null, :boolean, :integer, :double, :number, :string, :map_start, :map
 end
 
 """
-    complete(ctx::Context)
+    collect(ctx::Context)
 
 Override this function for your custom [`Context`](@ref) to specify what is returned from [`run`](@ref).
 By default, `ctx` itself is returned.
 """
-complete(ctx::Context) = ctx
+collect(ctx::Context) = ctx
 
 struct Callbacks
     null::Ptr{Cvoid}
@@ -201,7 +201,7 @@ end
     run(io::IO, ctx::Context; chunk::Integer=2^16, options::Integer=0x0)
 
 Parse the JSON data from `io` and process it with `ctx`'s callbacks.
-The return value is determined by the implementation of [`complete`](@ref) for `ctx`.
+The return value is determined by the implementation of [`collect`](@ref) for `ctx`.
 
 ## Keywords
 - `chunk::Integer=2^16`: Number of bytes to read from `io` at a time.
@@ -236,7 +236,7 @@ function run(io::IO, ctx::T; chunk::Integer=2^16, options::Integer=0x0) where T 
 
     ccall(yajl[:free], Cvoid, (Ptr{Cvoid},), handle)
 
-    return complete(ctx)
+    return collect(ctx)
 end
 
 # Container for function pointers.

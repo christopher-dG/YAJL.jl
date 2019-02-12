@@ -34,7 +34,7 @@ struct Minifier{T<:IO} <: Context
     Minifier(io::T=stdout) where T <: IO = new{T}(io, [MINIFY_INIT])
 end
 
-complete(ctx::Minifier) = ctx.io
+collect(ctx::Minifier) = ctx.io
 
 writeval(ctx::Minifier, v::Ptr{UInt8}, len::Int) = unsafe_write(ctx.io, v, len)
 writeval(ctx::Minifier, v::Vector{UInt8}, ::Int=-1) = write(ctx.io, v)

@@ -11,23 +11,25 @@ However, YAJL makes it possible to write highly custom JSON processors that neve
 
 It's quite easy to write your own custom JSON context.
 You get to choose your data representation, and you only need to implement what you'll use.
+
 Suppose that we had a massive list of numbers that we wanted to count.
 Code for this task would look like this:
 
 ```julia
 using YAJL
 
-mutable struct Count <: YAJL.Context
+mutable struct Counter <: YAJL.Context
     n::BigInt
-    Count() = new(0)
+    Counter() = new(0)
 end
 
-YAJL.complete(ctx::Count) = ctx.n
-@yajl number(ctx::Count, ::Ptr{UInt8}, ::Int) = ctx.n += 1
+YAJL.collect(ctx::Counter) = ctx.n
+@yajl number(ctx::Counter, ::Ptr{UInt8}, ::Int) = ctx.n += 1
 
-n = open(io -> YAJL.run(io, Count()), "big_list.json")
+n = open(io -> YAJL.run(io, Counter()), "big_list.json")
 ```
 
 Counting this list uses a constant amount of memory, regardless of the list length.
 
-For a more complete example, see [`minify.jl`](src/minifier.jl).
+There are more basic examples in [`runtests.jl`](test/runtests.jl).
+For a more complete example, see [`minifier.jl`](src/minifier.jl).
