@@ -157,18 +157,24 @@ macro yajl(ex)
     T = Ts[1]
     Ts[1] = :(Ref($T))
 
-    quote
-        # Validate the argument types.
-        checktypes($(QuoteNode(f)), ($(Ts...),)...)
-
-        # Warn if a useless or destructive callback is being added.
-        $(QuoteNode(f)) === :on_number &&
+    # Warn if a useless or destructive callback is being added.
+    warn1 = if f === :on_number
+        quote
             YAJL.hasmethod($T, cb_integer, cb_double) &&
-            @warn "Implementing number callback for $($T) disables both integer and double callbacks"
-        $(QuoteNode(f)) in (:on_integer, :on_double) &&
+                @warn "Implementing number callback for $($T) disables both integer and double callbacks"
+        end
+    end
+    warn2 = if f in (:on_integer, :on_double)
+        quote
             YAJL.hasmethod($T, cb_number) &&
-            @warn "Implementing integer or double callback for $($T) has no effect because number callback is already implemented"
+                @warn "Implementing integer or double callback for $($T) has no effect because number callback is already implemented"
+        end
+    end
 
+    quote
+        checktypes($(QuoteNode(f)), ($(Ts...),)...)
+        $warn1
+        $warn2
         $(esc(ex))
         $(esc(cb))(::$T) = @cfunction $f Cint ($(Ts...),)
     end
