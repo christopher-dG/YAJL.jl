@@ -4,6 +4,12 @@ export @yajl
 
 using Libdl
 
+
+"""
+Return this variable from your callback function to cancel any further processing.
+"""
+const CANCEL = gensym(:yajl_cancel)
+
 """
 Base type for YAJL contexts.
 To implement a custom `Context`'s behaviour, see [`@yajl`](@ref) and [`collect`](@ref).
@@ -74,12 +80,12 @@ hasmethod(T::Type{<:Context}, fs::Function...) =
     any(f -> any(m -> m.sig.types[2] === T, methods(f)), fs)
 
 # Check that a callback's type signature is valid.
-function checktypes(f::Symbol, C::Base.RefValue, Ts::Type...)
+function checktypes(f::Symbol, ::Type{Ptr{C}}, Ts::Type...) where C
     # Drop the leading on_.
     f = Symbol(string(f)[4:end])
     err = ArgumentError("Invalid callback type signature")
 
-    C.x <: Context || throw(err)
+    C <: Context || throw(err)
     if f in (:boolean, :integer)
         length(Ts) == 1 && Ts[1] <: Integer || throw(err)
     elseif f === :double
@@ -93,9 +99,7 @@ end
 
 """
 Register a callback for a specific data type.
-Callback functions should return `true` or a non-zero integer upon success, otherwise parsing stops (although sometimes this is desired).
-A `return true` is inserted automatically at the end of the function, but your own explicit returns override this.
-Note that the `return` keyword **must** be used in this case.
+Inside the callback function, the special value [`CANCEL`](@ref) can be returned to stop processing.
 
 The callbacks to be overridden are as follows:
 
@@ -126,18 +130,9 @@ However, `Ptr{UInt8}` is usually better if you want to use `unsafe_string(v, len
 For a full example, see `minifier.jl`.
 """
 macro yajl(ex)
-    # Ensure that the function returns a Cint.
-    if ex.args[1].args[1] isa Symbol
-        ex.args[1] = Expr(:(::), ex.args[1], :Cint)
-    else
-        ex.args[1].args[2] = :Cint
-    end
-
-    # By default, always return success.
-    push!(ex.args[2].args, :(return true))
 
     # Unmodified function name.
-    f = ex.args[1].args[1].args[1]
+    f = ex.args[1].args[1]
 
     # Ensure that it's a valid callback name.
     f in CALLBACKS || throw(ArgumentError("Invalid callback name"))
@@ -146,37 +141,58 @@ macro yajl(ex)
     cb = Expr(:., :YAJL, QuoteNode(Symbol(:cb_, f)))
 
     # Rename the function to on_* to avoid any Base conflicts.
-    f = ex.args[1].args[1].args[1] = Symbol(:on_, f)
+    f = ex.args[1].args[1] = Symbol(:on_, f)
 
     # Argument types for @cfunction.
-    Ts = map(ex.args[1].args[1].args[2:end]) do ex
+    Ts = map(ex.args[1].args[2:end]) do ex
         ex isa Symbol && throw(ArgumentError("Callback arguments must be typed"))
-        esc(ex.args[end])
+        ex.args[end]
     end
+    Ts = convert(Vector{Any}, Ts)
     isempty(Ts) && throw(ArgumentError("Invalid callback type signature"))
     T = Ts[1]
-    Ts[1] = :(Ref($T))
+    Ts[1] = :(Ptr{$T})
+    Ts_esc = map(esc, Ts)
+
+    # Create another function that takes a pointer.
+    ns = map(i -> Symbol(:x, i), 1:length(Ts))
+    args = map(((n, T),) -> :($n::$T), zip(ns, Ts))
+    load, store = if length(ex.args[1].args[2].args) > 1
+        :(ctx = unsafe_load(x1)), :(isimmutable(ctx) || unsafe_store!(x1, ctx))
+    else
+        :(ctx = Ptr{$T}(0)), :()
+    end
+
+    delegate = quote
+        function $f($(args...))::Cint
+            $load
+            ret = $f(ctx, $(ns[2:end]...)) !== YAJL.CANCEL
+            $store
+            return ret
+        end
+    end
 
     # Warn if a useless or destructive callback is being added.
     warn1 = if f === :on_number
         quote
-            YAJL.hasmethod($T, cb_integer, cb_double) &&
+            YAJL.hasmethod($(esc(T)), cb_integer, cb_double) &&
                 @warn "Implementing number callback for $($T) disables both integer and double callbacks"
         end
     end
     warn2 = if f in (:on_integer, :on_double)
         quote
-            YAJL.hasmethod($T, cb_number) &&
+            YAJL.hasmethod($(esc(T)), cb_number) &&
                 @warn "Implementing integer or double callback for $($T) has no effect because number callback is already implemented"
         end
     end
 
     quote
-        checktypes($(QuoteNode(f)), ($(Ts...),)...)
+        checktypes($(QuoteNode(f)), ($(Ts_esc...),)...)
         $warn1
         $warn2
         $(esc(ex))
-        $(esc(cb))(::$T) = @cfunction $f Cint ($(Ts...),)
+        $(esc(delegate))
+        $(esc(cb))(::$(esc(T))) = @cfunction $f Cint ($(Ts_esc...),)
     end
 end
 
