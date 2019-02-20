@@ -45,14 +45,7 @@ struct UntilN <: YAJL.Context
     UntilN(n::Int) = new(n, [])
 end
 YAJL.collect(ctx::UntilN) = ctx.xs
-@yajl function integer(ctx::UntilN, n::Int)
-    return if n == ctx.n
-        false
-    else
-        push!(ctx.xs, n)
-        true
-    end
-end
+@yajl integer(ctx::UntilN, n::Int) = n == ctx.n ? YAJL.CANCEL : push!(ctx.xs, n)
 
 struct DoNothing <: YAJL.Context end
 struct DoNothing2 <: YAJL.Context end
