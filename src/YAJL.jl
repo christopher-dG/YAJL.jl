@@ -27,7 +27,7 @@ const CALLBACKS = (:null, :boolean, :integer, :double, :number, :string, :map_st
 for s in [:null, :boolean, :integer, :double, :number, :string, :map_start, :map_key,
           :map_end, :array_start, :array_end]
     f = Symbol(:cb_, s)
-    @eval $f(::Type{<:Context}) = C_NULL
+    @eval $f(::Context) = C_NULL
 end
 
 """
@@ -51,18 +51,18 @@ struct Callbacks
     array_start::Ptr{Cvoid}
     array_end::Ptr{Cvoid}
 
-    Callbacks(T::Type{<:Context}) = new(
-        cb_null(T),
-        cb_boolean(T),
-        cb_integer(T),
-        cb_double(T),
-        cb_number(T),
-        cb_string(T),
-        cb_map_start(T),
-        cb_map_key(T),
-        cb_map_end(T),
-        cb_array_start(T),
-        cb_array_end(T),
+    Callbacks(ctx::Context) = new(
+        cb_null(ctx),
+        cb_boolean(ctx),
+        cb_integer(ctx),
+        cb_double(ctx),
+        cb_number(ctx),
+        cb_string(ctx),
+        cb_map_start(ctx),
+        cb_map_key(ctx),
+        cb_map_end(ctx),
+        cb_array_start(ctx),
+        cb_array_end(ctx),
     )
 end
 
@@ -181,10 +181,12 @@ macro yajl(ex::Expr)
     # We need to get the context type without any type parameters
     # to check that it actually is a Context.
     T = Ts[1]
+
+    # Most of the time, we don't actually need the type parameters.
     T_noparam = T isa Expr && T.head === :curly ? T.args[1] : T
 
     # Change the first argument to be a pointer, since that's what @cfunction needs.
-    Ts[1] = :(Ptr{$T})
+    Ts[1] = :(Ptr{$T_noparam})
 
     # We'll check the context type manually, but we still need the later ones to
     # make sure that the signature is correct.
@@ -212,7 +214,7 @@ macro yajl(ex::Expr)
     #   value is anything but CANCEL, we return 1, otherwise 0.
     # - Store the context back to the pointer, if necessary. We only do this when both
     #   a) the context is named in the user function, b) the context is mutable.
-    body = Expr(:block, :(ctx = unsafe_load(x1)),
+    body = Expr(:block, :(ctx = unsafe_load(x1)), :(@show ctx),
                 :(ret = $f(ctx, $(ns[2:end]...)) !== YAJL.CANCEL))
 
     # The signature's second argument is a typed expression with one argument
@@ -225,7 +227,7 @@ macro yajl(ex::Expr)
     delegate = Expr(:function, delegate, body)
 
     # Create the callback function, which will create a C function pointer to the delegate.
-    cbfun = Expr(:call, cb, :(::Type{$T}))
+    cbfun = Expr(:call, cb, :(::$T))
     where === nothing || (cbfun = Expr(:where, cbfun, where))
     cbfun = Expr(:(=), cbfun, :(@cfunction $f Cint ($(Ts...),)))
 
@@ -293,7 +295,7 @@ The return value is determined by the implementation of [`collect`](@ref) for `c
 - `options::Integer=0x0`: YAJL parser options, ORed together.
 """
 function run(io::IO, ctx::T; chunk::Integer=2^16, options::Integer=0x0) where T <: Context
-    cbs = Callbacks(T)
+    cbs = Callbacks(ctx)
     handle = ccall(yajl[:alloc], Ptr{Cvoid}, (Ref{Callbacks}, Ptr{Cvoid}, Ref{T}),
                    cbs, C_NULL, ctx)
 

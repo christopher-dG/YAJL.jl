@@ -28,10 +28,10 @@ julia> String(take!(YAJL.run(IOBuffer("{    }"), YAJL.Minifier(IOBuffer()))))
 ```
 """
 struct Minifier{T<:IO} <: Context
-    io::T
     state::Vector{MinifyState}
+    io::T
 
-    Minifier(io::T=stdout) where T <: IO = new{T}(io, [MINIFY_INIT])
+    Minifier(io::T=stdout) where T <: IO = new{T}([MINIFY_INIT], io)
 end
 
 collect(ctx::Minifier) = ctx.io
