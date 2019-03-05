@@ -97,13 +97,14 @@ end
 
 """
 Register a callback for a specific data type.
-Callback functions must return an `Integer` value.
+If the callback function returns a value via the `return` keyword,
+then it must be an `Integer` value.
 If the value is `false` or `0`, any further processing is cancelled.
 
-The callbacks to be overridden are as follows:
+The callbacks to be overridden are as follows, where `T` is a `Context` subtype:
 
 - `null(ctx::T)`: Called on `null` values.
-- `boolean(ctx::T, v::Bool)`: `Called on boolean values.
+- `boolean(ctx::T, v::Bool)`: Called on boolean values.
 - `integer(ctx::T, v::Int)`: Called on integer values (see note below).
 - `double(ctx::T, v::Float64)`: Called on float values (see note below).
 - `number(ctx::T, v::Ptr{UInt8}, len::Int)`: Called on numeric values (see note below).
