@@ -134,10 +134,9 @@ macro yajl(ex::Expr)
     # If the context type for which the callback is being implemented is parametric,
     # then the function definition might have a "where" clause that changes the structure.
     # The value is either:
-    # - A symbol: f(...) where T = ...
-    # - An expression: f(...) where T <: IO = ...
+    # - A list of symbols or expressions: f(...) where {T, U <: IO, ...} = ...
     # - nothing: f(...) = ...
-    where = ex.args[1].head === :where ? ex.args[1].args[2] : nothing
+    where = ex.args[1].head === :where ? ex.args[1].args[2:end] : nothing
 
     # Next, we extract the function signature, whose position can change depending on
     # whether a where clause is present, and whether a type conversion is present.
@@ -192,7 +191,7 @@ macro yajl(ex::Expr)
     Ts[1] = :(Ref{$Tnp})
 
     # Sometimes we also need the whole type with where.
-    Twh = where === nothing ? T : Expr(:where, T, where)
+    Twh = where === nothing ? T : Expr(:where, T, where...)
 
     # We'll check the context type manually, but we still need the later ones to
     # make sure that the signature is correct.
@@ -200,7 +199,7 @@ macro yajl(ex::Expr)
 
     # Create the callback function, which will create a C function pointer.
     cbfun = Expr(:call, cb, :(::$T))
-    where === nothing || (cbfun = Expr(:where, cbfun, where))
+    where === nothing || (cbfun = Expr(:where, cbfun, where...))
     cbfun = Expr(:(=), cbfun, :(@cfunction $f Cint ($(Ts...),)))
 
     # Warn if a useless or destructive callback is being added.

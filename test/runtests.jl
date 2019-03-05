@@ -67,6 +67,15 @@ YAJL.collect(ctx::ParametricSum) = ctx.x
 @yajl number(ctx::ParametricSum{Int}, v::Ptr{UInt8}, len::Int) =
     ctx.x += 2 * parse(Int, unsafe_string(v, len))
 
+mutable struct ParametricSumProduct{T<:Integer, U<:AbstractFloat} <: YAJL.Context
+    x::T
+    y::U
+    ParametricSumProduct{T, U}() where {T <: Integer, U <: AbstractFloat} = new{T, U}(0, 0)
+end
+YAJL.collect(ctx::ParametricSumProduct) = ctx.x * ctx.y
+@yajl integer(ctx::ParametricSumProduct, v::Int) = ctx.x += v
+@yajl double(ctx::ParametricSumProduct, v::Float64) = ctx.y += v
+
 mutable struct FooAcc <: YAJL.Context
     s::String
     FooAcc() = new("")
@@ -99,6 +108,9 @@ struct DoNothing4{T} <: YAJL.Context end
         io = IOBuffer("[" * repeat("1,", 1000000) * "1]")
         expected = Int(2000002)
         @test YAJL.run(io, ParametricSum{Int}()) === expected
+        io = IOBuffer("[" * repeat("1.0,", 100) * repeat("1,", 100) * "1]")
+        expected = Float64(10100)
+        @test YAJL.run(io, ParametricSumProduct{Int, Float64}()) === expected
     end
 
     @testset "Not isbitstype" begin
