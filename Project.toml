@@ -1,7 +1,7 @@
 name = "YAJL"
 uuid = "bda616b3-ac6d-5293-8ee1-22b41414598d"
 authors = ["Chris de Graaf <chrisadegraaf@gmail.com>"]
-version = "0.1.0"
+version = "0.2.0"
 
 [deps]
 BinaryProvider = "b99e7846-7c00-51b0-8f62-c81ae34c0232"
