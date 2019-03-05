@@ -39,13 +39,38 @@ end
 YAJL.collect(ctx::Counter) = ctx.n
 @yajl integer(ctx::Counter, ::Int) = ctx.n += 1
 
-struct UntilN <: YAJL.Context
+mutable struct UntilN <: YAJL.Context
     n::Int
     xs::Vector{Int}
-    UntilN(n::Int) = new(n, [])
+    cancelled::Bool
+    broken::Bool
+    UntilN(n::Int) = new(n, [], false, false)
 end
-YAJL.collect(ctx::UntilN) = ctx.xs
-@yajl integer(ctx::UntilN, n::Int) = n == ctx.n ? YAJL.CANCEL : push!(ctx.xs, n)
+YAJL.collect(ctx::UntilN) = ctx.xs, ctx.cancelled, ctx.broken
+@yajl function integer(ctx::UntilN, n::Int)
+    ctx.cancelled && (ctx.broken = true)
+    if n == ctx.n
+        ctx.cancelled = true
+        return false
+    else
+        push!(ctx.xs, n)
+    end
+end
+
+mutable struct ParametricSum{T<:Number} <: YAJL.Context
+    x::T
+    ParametricSum{T}() where T <: Number = new{T}(0)
+end
+YAJL.collect(ctx::ParametricSum) = ctx.x
+@yajl number(ctx::ParametricSum{T}, v::Ptr{UInt8}, len::Int) where T <: Number =
+    ctx.x += parse(T, unsafe_string(v, len))
+
+mutable struct FooAcc <: YAJL.Context
+    s::String
+    FooAcc() = new("")
+end
+YAJL.collect(ctx::FooAcc) = ctx.s
+@yajl integer(ctx::FooAcc, ::Int) = ctx.s *= "foo"
 
 struct DoNothing <: YAJL.Context end
 struct DoNothing2 <: YAJL.Context end
@@ -60,8 +85,20 @@ struct DoNothing3 <: YAJL.Context end
 
     @testset "Cancellation" begin
         io = IOBuffer("[" * repeat("0,", 10) * "1,1,1,1,1]")
-        expected = zeros(Int, 10)
+        expected = zeros(Int, 10), true, false
         @test YAJL.run(io, UntilN(1)) == expected
+    end
+
+    @testset "Parametric types" begin
+        io = IOBuffer("[" * repeat("1.0,", 1000000) * "1.0]")
+        expected = Float64(1000001)
+        @test YAJL.run(io, ParametricSum{Float64}()) === expected
+    end
+
+    @testset "Not isbitstype" begin
+        io = IOBuffer("[" * repeat("0,", 10) * "0]")
+        expected = repeat("foo", 11)
+        @test YAJL.run(io, FooAcc()) == expected
     end
 
     @testset "Parse options" begin
