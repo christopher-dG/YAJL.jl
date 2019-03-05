@@ -64,6 +64,8 @@ end
 YAJL.collect(ctx::ParametricSum) = ctx.x
 @yajl number(ctx::ParametricSum{T}, v::Ptr{UInt8}, len::Int) where T <: Number =
     ctx.x += parse(T, unsafe_string(v, len))
+@yajl number(ctx::ParametricSum{Int}, v::Ptr{UInt8}, len::Int) =
+    ctx.x += 2 * parse(Int, unsafe_string(v, len))
 
 mutable struct FooAcc <: YAJL.Context
     s::String
@@ -75,6 +77,7 @@ YAJL.collect(ctx::FooAcc) = ctx.s
 struct DoNothing <: YAJL.Context end
 struct DoNothing2 <: YAJL.Context end
 struct DoNothing3 <: YAJL.Context end
+struct DoNothing4{T} <: YAJL.Context end
 
 @testset "YAJL.jl" begin
     @testset "Basics" begin
@@ -93,6 +96,9 @@ struct DoNothing3 <: YAJL.Context end
         io = IOBuffer("[" * repeat("1.0,", 1000000) * "1.0]")
         expected = Float64(1000001)
         @test YAJL.run(io, ParametricSum{Float64}()) === expected
+        io = IOBuffer("[" * repeat("1,", 1000000) * "1]")
+        expected = Int(2000002)
+        @test YAJL.run(io, ParametricSum{Int}()) === expected
     end
 
     @testset "Not isbitstype" begin
@@ -144,6 +150,11 @@ struct DoNothing3 <: YAJL.Context end
         @test_logs (:warn, r"disables") eval(:(@yajl number(::DoNothing2, ::Ptr{UInt8}, ::Int) = nothing))
         @test_logs eval(:(@yajl double(::DoNothing3, ::Float64) = nothing))
         @test_logs (:warn, r"disables") eval(:(@yajl number(::DoNothing3, ::Ptr{UInt8}, ::Int) = nothing))
+        # When parametric types don't overlap, there should be no warning.
+        @test_logs eval(:(@yajl integer(::DoNothing4{Int}, ::Int) = nothing))
+        @test_logs eval(:(@yajl number(::DoNothing4{String}, ::Ptr{UInt8}, ::Int) = nothing))
+        @test_logs eval(:(@yajl number(::DoNothing4{Nothing}, ::Ptr{UInt8}, ::Int) = nothing))
+        @test_logs eval(:(@yajl double(::DoNothing4{Missing}, ::Float64) = nothing))
     end
 
     @testset "Minifier" begin
