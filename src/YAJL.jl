@@ -2,7 +2,15 @@ module YAJL
 
 export @yajl
 
-using Libdl
+using Libdl: dlopen, dlsym
+
+@static if VERSION >= v"1.3"
+    using YAJL_jll: libyajl
+else
+    let depsfile = joinpath(dirname(@__DIR__), "deps", "deps.jl")
+        isfile(depsfile) ? include(depsfile) : error("""Run Pkg.build("YAJL")""")
+    end
+end
 
 # Thrown when an invalid callback is registered.
 const invalid_sig = ArgumentError("Invalid callback type signature")
@@ -301,15 +309,11 @@ end
 # Container for function pointers.
 const yajl = Dict{Symbol, Ptr{Cvoid}}()
 
-const depsfile = joinpath(dirname(@__DIR__), "deps", "deps.jl")
-isfile(depsfile) ? include(depsfile) : error("""Run Pkg.build("YAJL")""")
-
 # Load functions at runtime.
 function __init__()
-    check_deps()
-    lib = Libdl.dlopen(libyajl)
+    lib = dlopen(libyajl)
     for f in [:alloc, :complete_parse, :config, :free, :free_error, :get_error, :parse]
-        yajl[f] = Libdl.dlsym(lib, Symbol(:yajl_, f))
+        yajl[f] = dlsym(lib, Symbol(:yajl_, f))
     end
 end
 
