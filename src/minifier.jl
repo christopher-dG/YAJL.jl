@@ -27,7 +27,7 @@ julia> String(take!(YAJL.run(IOBuffer("{    }"), YAJL.Minifier(IOBuffer()))))
 "{}"
 ```
 """
-struct Minifier{T<:IO} <: Context
+mutable struct Minifier{T<:IO} <: Context
     io::T
     state::Vector{MinifyState}
 
